@@ -1931,7 +1931,8 @@ c-----------------------------------------------------------------------
       common /vrthov/ w2(lrbs) ! read buffer
       real*4 w2
 
-      integer vi(2+lrbs_loc,lelt) ! [nid,iel,(data real*8)] x nelt
+      integer, allocatable :: vi(:,:)
+      integer vierr
       real*8 etime0,dnekclock_sync
 
       integer e,ei
@@ -1939,6 +1940,13 @@ c-----------------------------------------------------------------------
       integer*8 i8tmp
 
       integer*8 disp
+
+c     Allocate the crystal-routing buffer only on reader ranks.
+      vierr = 0
+      if (ifcrrs.and.nid.eq.pid0r.and.np.gt.1) then
+         allocate(vi(2+lrbs_loc,lelt),stat=vierr)
+      endif
+      call err_chk(vierr,'Restart buffer allocation failed.$')
 
       nxyzr  = nxr*nyr*nzr  
       dnxyzr = nxyzr 
@@ -2124,6 +2132,7 @@ c-----------------------------------------------------------------------
       enddo
 
  100  call err_chk(ierr,'Error reading restart data,in gets.$')
+      if (allocated(vi)) deallocate(vi)
       return
       end
 c-----------------------------------------------------------------------
@@ -2145,13 +2154,21 @@ c-----------------------------------------------------------------------
       common /vrthov/ w2(lrbs) ! read buffer
       real*4 w2
 
-      integer vi(2+lrbs_loc,lelt) ! [nid,iel,(data real*8)] x nelt
+      integer, allocatable :: vi(:,:)
+      integer vierr
       real*8 etime0,dnekclock_sync
 
       integer e,ei
       integer*8 i8tmp
 
       integer*8 disp
+
+c     Allocate the crystal-routing buffer only on reader ranks.
+      vierr = 0
+      if (ifcrrs.and.nid.eq.pid0r.and.np.gt.1) then
+         allocate(vi(2+lrbs_loc,lelt),stat=vierr)
+      endif
+      call err_chk(vierr,'Restart buffer allocation failed.$')
 
       nxyzr  = ldim*nxr*nyr*nzr
       if (wdsizr.eq.8) nxyzr = 2*nxyzr
@@ -2349,6 +2366,7 @@ c-----------------------------------------------------------------------
 
  100  call err_chk(ierr,'Error reading restart data, in getv.$')
 
+      if (allocated(vi)) deallocate(vi)
       return
       end
 c-----------------------------------------------------------------------

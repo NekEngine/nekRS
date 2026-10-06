@@ -23,6 +23,10 @@ c
 
       integer*8 dtmp8
       integer*8 i8glsum,nfail,nfail_sum
+      integer hash_global,search_max,search_start,nsearch
+      integer first,ix,iy,iz,ie
+      integer maxpts
+      parameter(maxpts=250000)
 
       logical if_byte_swap_test
       real*4 bytetest
@@ -105,12 +109,13 @@ c
       nyf   = 2*nys
       nzf   = 2*nzs
       nhash = nels*nxs*nys*nzs 
+      hash_global = max(1,nhash/4)
       nmax  = 128
 
       call fgslib_findpts_setup(inth_gfldr,nekcomm,np,ldim,
      &                          xm1s,ym1s,zm1s,nxs,nys,nzs,
      &                          nels,nxf,nyf,nzf,bb_t,
-     &                          nhash,nhash,nmax,tol)
+     &                          nhash,hash_global,nmax,tol)
 
 
       ! locate points (iel,iproc,r,s,t)
@@ -119,15 +124,26 @@ c
       if(wdsizr.eq.8) toldist = 5e-14
 
       ntot  = lx1*ly1*lz1*nelt
-      call fgslib_findpts(inth_gfldr,
-     &                    grcode,1,
-     &                    gproc,1,
-     &                    gelid,1,
-     &                    grst,ldim,
-     &                    gdist,1,
-     &                    xm1,1,
-     &                    ym1,1,
-     &                    zm1,1,ntot)
+c     All ranks enter every collective search, including empty batches.
+      search_max = iglmax(ntot,1)
+      do search_start=1,search_max,maxpts
+         nsearch = min(maxpts,max(0,ntot-search_start+1))
+         first = 1
+         if(nsearch.gt.0) first = search_start
+         ix = mod(first-1,lx1)+1
+         iy = mod((first-1)/lx1,ly1)+1
+         iz = mod((first-1)/(lx1*ly1),lz1)+1
+         ie = (first-1)/(lx1*ly1*lz1)+1
+         call fgslib_findpts(inth_gfldr,
+     &                       grcode(first),1,
+     &                       gproc(first),1,
+     &                       gelid(first),1,
+     &                       grst(ldim*(first-1)+1),ldim,
+     &                       gdist(first),1,
+     &                       xm1(ix,iy,iz,ie),1,
+     &                       ym1(ix,iy,iz,ie),1,
+     &                       zm1(ix,iy,iz,ie),1,nsearch)
+      enddo
 
       do i=1,ntot
          if(grcode(i).eq.1 .and. sqrt(gdist(i)).gt.toldist)
@@ -303,18 +319,42 @@ c-----------------------------------------------------------------------
       include 'GEOM'
       include 'GFLDR'
 
-      real    fieldout(nout)
+      real    fieldout(*)
       real    fieldin (*)
+      integer eval_max,eval_start,neval,first
+      integer reset_code,reset_proc,reset_el
+      integer maxpts
+      real reset_rst(3),reset_dist
+      real reset_x,reset_y,reset_z
+      parameter(maxpts=250000)
 
-      ! evaluate inut field at given points
-      npt = nout
-      call fgslib_findpts_eval(inth_gfldr,
-     &                         fieldout,1,
-     &                         grcode,1,
-     &                         gproc,1,
-     &                         gelid,1,
-     &                         grst,ldim,npt,
-     &                         fieldin)
+c     GSLIB caches evaluation routing until the next findpts call.
+c     Refresh it for each bounded, collective evaluation batch.
+      eval_max = iglmax(nout,1)
+      do eval_start=1,eval_max,maxpts
+         neval = min(maxpts,max(0,nout-eval_start+1))
+         first = 1
+         if(neval.gt.0) first = eval_start
+         reset_x = xm1(1,1,1,1)
+         reset_y = ym1(1,1,1,1)
+         reset_z = zm1(1,1,1,1)
+         call fgslib_findpts(inth_gfldr,
+     &                       reset_code,1,
+     &                       reset_proc,1,
+     &                       reset_el,1,
+     &                       reset_rst,ldim,
+     &                       reset_dist,1,
+     &                       reset_x,1,
+     &                       reset_y,1,
+     &                       reset_z,1,1)
+         call fgslib_findpts_eval(inth_gfldr,
+     &                            fieldout(first),1,
+     &                            grcode(first),1,
+     &                            gproc(first),1,
+     &                            gelid(first),1,
+     &                            grst(ldim*(first-1)+1),ldim,
+     &                            neval,fieldin)
+      enddo
 
       return
       end
